@@ -11,11 +11,12 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-STEP_REPEAT = 50#TODO
+
+STEP_REPEAT = 3#TODO
 
 GENERATIONS = 2000
 POPILATION_SIZE = 30
-GAIT_STEPS = 2
+GAIT_STEPS = 4
 ANGLES = 6
 CHROMOSOME_SIZE = ANGLES*GAIT_STEPS
 MAX_1=45
@@ -61,15 +62,15 @@ stepss = [      [0,45,90,  s,s,s,  s,s,s,             s,s,s,  s,s,s, s,s,s,
                 -60,90,90,  s,s,s,  s,s,s,             s,s,s,  s,s,s, s,s,s,]
                 ]
 '''
+
 stepss = [
 
-
-
-
-
-[10, 45, 45, 10, 75, 120, 10, 105, 30, -5, 105, 30]
+[30, 140, 65, 5, 60, 55, -40, 115, 60, 35, 115, 75, 35, 90, 75, -40, 115, 75, 35, 110, 65, -40, 110, 80],
 
 ]
+
+
+
 def readFile(filename):
     gen = []
     go=0
@@ -132,7 +133,7 @@ def main():
     parent_conn, child_conn = Pipe()
     #sim.reset()
     #sim.setup()
-    sim_proc = Process(target=Simulation, args=(child_conn,GAIT_STEPS*STEP_REPEAT, 'gui'))
+    sim_proc = Process(target=Simulation, args=(child_conn,GAIT_STEPS*STEP_REPEAT,1111, 'gui'))
     sim_proc.start()
     #joints_seg = parent_conn.recv()
     #print(joints_seg)
@@ -147,34 +148,42 @@ def main():
             y = copytoLegs(y)
             logger.debug('copied: %s', str(y))
             y = stepRepeat(y)
-            logger.debug('wyslane: %s', str(y))
+            logger.debug('sent: %s', str(y))
             parent_conn.send(y)
             while True:
-                try:
-                    if parent_conn.recv() == "simok":
+                if parent_conn.poll():
+                    rec = parent_conn.recv()
+                    if rec == "simok":
+                        logger.debug('simok')
                         break
-                except:
-                    continue
+                    else:
+                        logger.debug('wrong data, received %s', str(rec))
+                #else:
+                    #logger.debug('waitinf for simok')
+
             while True:
-                try:
-                    rec= parent_conn.recv()
-                    contact, base_pos, base_angle = rec
-                    print(rec)
-                    if len(contact) == 6 and len(base_pos) == 3 and len(base_angle) == 3:
+                if parent_conn.poll():
+                    rec= parent_conn.recv()[-1]
+                    logger.debug('data received : size %s %s', len(rec), str(rec))
+                    if len(rec)==4:
+                        contact, base_pos, base_angle, diff = rec
+                    #if len(contact) == 6 and len(base_pos) == 3 and len(base_angle) == 3:
                         parent_conn.send('dataok')
+                        logger.debug('dataok')
                         break
-                except:
-                    continue
+                else:
+                    logger.debug('waitinf for correct data')
 
             parent_conn.send('reset')
             while True:
                 #print('in loop3')
-                try:
+                if parent_conn.poll():
                     rec = parent_conn.recv()
                     if rec == "resok":
+                        logger.debug('resok')
                         break
-                except:
-                    continue
+                #else:
+                #    logger.debug('waitinf for reset confirm')
         #parent_conn.send('reset')
 
 

@@ -15,35 +15,37 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
+SIMSLEEPTIME = 0.001#0.0006
+MOVE_TIMEST = 40
+MOVE_TIME = 500 #- MOVE_TIMEST#600#just value increment
 #MASS = 100
-MASS = 110
+MASS = 50#110
 #FRICTION = 9999990
-FRICTION = 0.5
+FRICTION = 1000#0.35
 #GRAVITY = -90.8
-GRAVITY = -20
-GAIN = 0.02#0.009#0.01
+GRAVITY = -50#-100
+GAIN = 0.005#0.02#0.009#0.01
 
 STATE1 = [-45,90,90,  45,90,90,    -45,90,90,  45,90,90,          -45,90,90,  45,90,90]
 STATE1 = []
 class Simulation(object):
-    def __init__(self, child_conn, gait_steps, gui = None):
+    def __init__(self, parent_conn, gait_steps, name, gui = None):
 #        super(Simulation,self).__init__()
-
+        self.name = "sim "+str(name)
         self.cubeStartPos = None
-        self.cont_legs = [3, 7, 11, 15, 19, 23]
+        self.contact_legs = [3, 7, 11, 15, 19, 23]
         self.robot = None
         self.joints, self.joints_seg = self.gen_jointLists()
-        self.child_conn = child_conn
-
+        self.parent_conn = parent_conn
+        print("legs",len(self.joints))
         self.gait_steps = gait_steps
+        self.gaitAngles = [[0]*len(self.joints),[0]*len(self.joints)]
         self.gui = gui
-
-        self.child_conn.send(self.joints_seg)
+        self.parent_conn.send(self.joints_seg)
         self.setup()
         self.run_sim()
 
-    def reset(self):
+    def resetSim(self):
         p.resetSimulation()
         #p.disconnect()
 
@@ -73,37 +75,46 @@ class Simulation(object):
     def setup(self):
         if self.gui == 'gui':
             physicsClient = p.connect(p.GUI)#or p.DIRECT for non-graphical version
+            p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING,1)
+            p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
+            #p.configureDebugVisualizer(p.COV_ENABLE_PLANAR_REFLECTION,0)
+            p.resetDebugVisualizerCamera(cameraDistance = 2, cameraYaw = 50, cameraPitch = -30, cameraTargetPosition= [0.0,0.0,0.0])
+
         else:
             physicsClient = p.connect(p.DIRECT)#or p.DIRECT for non-graphical version
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
-        p.resetDebugVisualizerCamera(cameraDistance = 2, cameraYaw = 50, cameraPitch = -30, cameraTargetPosition= [0.0,0.0,0.0])
-        p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING,1)
+        #p.configureDebugVisualizer(p.COV_ENABLE_GUI,0)
+        #p.resetDebugVisualizerCamera(cameraDistance = 2, cameraYaw = 50, cameraPitch = -30, cameraTargetPosition= [0.0,0.0,0.0])
+        #p.configureDebugVisualizer(p.COV_ENABLE_MOUSE_PICKING,1)
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS,0)
         p.setPhysicsEngineParameter(enableConeFriction=0)
         p.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
 
         planeId = p.loadURDF('plane.urdf')
+        p.changeDynamics(planeId, -1, mass=MASS*10, lateralFriction=FRICTION)#, spinningFriction=FRICTION, rollingFriction=FRICTION)
 
-        self.cubeStartPos = [0,0,0.15]
+        self.cubeStartPos = [0,0,1.5]#[0,0,0.15]
         cubeStartOrientation = p.getQuaternionFromEuler([0,0,0])
 
         system = platform.system()
         if system == 'Windows':
             self.robot = p.loadURDF(r'E:\projekty\spider\pybullet\hexx\urdf\hexx.urdf',self.cubeStartPos, cubeStartOrientation)
         elif system == 'Linux':
-            self.robot = p.loadURDF(r'/run/media/desu/n1/projekty/spider/pybullet/hexx/urdf/hexx.urdf',self.cubeStartPos, cubeStartOrientation)
+            self.robot = p.loadURDF(r'/run/media/desu/n1/projekty/spider/pybullet/hexx/urdf/hexx.urdf',self.cubeStartPos, cubeStartOrientation,  globalScaling=10.0)
         p.setRealTimeSimulation(0)
         #p.setTimeStep(0.0001)
         p.setGravity(0, 0, GRAVITY)
         #self.joints, self.joints_seg = self.gen_jointLists()
         #p.changeDynamics(self.robot, -1, mass=MASS*10, lateralFriction=FRICTION, spinningFriction=FRICTION, rollingFriction=FRICTION)
-        p.changeDynamics(self.robot, -1, mass=MASS*10)
+        #p.changeDynamics(self.robot, -1, mass=MASS*50)
         for x in self.joints:
             #p.changeDynamics(self.robot, x, mass=MASS, lateralFriction=FRICTION, spinningFriction=FRICTION, rollingFriction=FRICTION, restitution=0.0000001, contactStiffness=1000, contactDamping=10000000)
             #p.changeDynamics(self.robot, x, mass=MASS, lateralFriction=FRICTION, spinningFriction=FRICTION, rollingFriction=FRICTION, restitution=0.0000001, contactStiffness=100, contactDamping=100,frictionAnchor=1)
             #p.changeDynamics(self.robot, x, mass=MASS, lateralFriction=FRICTION, spinningFriction=FRICTION, rollingFriction=FRICTION)
-            p.changeDynamics(self.robot, x,  mass=MASS)
-        #self.set_angl([0], 0)
-        #self.set_angl([1,2], 90)
+            p.changeDynamics(self.robot, x, mass=MASS, lateralFriction=FRICTION)
+            #p.changeDynamics(self.robot, x,  mass=MASS)
+        self.set_angl([0], 0)#self.set_angl([0], 0)
+        self.set_angl([1], 90)#self.set_angl([0], 0)
+        self.set_angl([2], 90)#self.set_angl([1,2], 90)
         #self.set_angles(STATE1)
 
     def stop(self):
@@ -113,8 +124,11 @@ class Simulation(object):
         p.resetBasePositionAndOrientation(self.robot,self.cubeStartPos, p.getQuaternionFromEuler([0,0,0]))
         self.set_angl([0], 0)
         self.set_angl([1,2], 90)
+        #sleep(2)
         for x in range(500):
-            self.sim_step()
+            p.stepSimulation()
+
+
 
     def get_contactData(self):
         linkList = []
@@ -123,7 +137,7 @@ class Simulation(object):
             if x[4] == -1 and x[3] not in linkList:
                 linkList.append(x[3])
         linkList2 = []
-        for x in self.cont_legs:
+        for x in self.contact_legs:
             if x in linkList:
                 linkList2.append(1)
             else:
@@ -145,11 +159,35 @@ class Simulation(object):
         return pos, angles
     #print(cubePos,cubeOrn)
 
+    def get_jointMoveDiff(self, jointNb = 0):
+        #print ("get_jointMoveDiff", "old", str(self.gaitAngles[0]), "new", str(self.gaitAngles[1]))
+
+        #logger.debug("get_jointMoveDiff", "old", str(self.gaitAngles[0]), "new", str(self.gaitAngles[1]))
+        summ = []
+        #for legsidx, legs in enumerate(self.joints_seg):#in each leg
+        for legsidx in range(0, len(self.gaitAngles[1]), len(self.joints_seg[0])):#in each leg
+            #incr = len(legs)-1-jointNb  #wchich joint
+            summ.append(abs(self.gaitAngles[0][legsidx+jointNb]-self.gaitAngles[1][legsidx+jointNb]))
+        #logger.debug("summ", str(summ))
+
+        self.gaitAngles[0] = self.gaitAngles[1]
+        summ=sum(summ)
+        return summ
+
+
+
     def get_requiredData(self):
         contact = self.get_contactData()
         base_pos, base_angle = self.get_baseData()
+        diff = self.get_jointMoveDiff()
+
         #[contact, base_pos, base_angle] -> [[0, 0, 0, 0, 0, 0], [-0.0, 0.0, 0.2], [0, 0, 0]]
-        return contact, base_pos, base_angle
+        '''
+        print(contact)
+        print(base_pos)
+        print(base_angle)
+        '''
+        return contact, base_pos, base_angle, diff
 
 
     def get_anglesLists(self):
@@ -197,9 +235,15 @@ class Simulation(object):
                     else:
                         p.setJointMotorControl2(bodyUniqueId = self.robot, jointIndex = part, controlMode = p.POSITION_CONTROL, targetPosition = math.radians(angles[x]),positionGain=GAIN)
                 except:
+                    print("Error setting angles")
                     print('angles size:', len(angles))
-                    print('x: ', x)
+                    print('angle step cnt: ', x)
+                    self.stop()
                     sys.exit(1)
+            for step in range(MOVE_TIMEST):
+                p.stepSimulation()
+        for step in range(MOVE_TIME):
+            p.stepSimulation()
 
     def set_angl(self, part, angle):
         for x in part:
@@ -250,80 +294,67 @@ class Simulation(object):
         #return out
         #return contact, base_pos, base_angle
     def run_sim(self):
-        x=0
-        a=-1
+        #moveTimer=0
+        gaitsLeft=-1
         ang = []
         data = []
         data_s = []
         while True:
             p.stepSimulation()
             if self.gui == 'gui':
+                contact, base_pos, base_angle, diff = self.get_requiredData()
+                #print("contact",contact)
+                #print("base_pos",base_pos)
+                #print("base_angle",base_angle)
+                #print("diff",diff)
                 self.changeCam()
-            if x == 600:
-                if ang:
+                #x=0
+            #if True:#if moveTimer == MOVE_TIME:#waiting for move to finish
+            if ang:#should run gaitsstep * STEP_REPEAT times
 
-                    logger.debug('S ang')
-                    #sys.stdout.flush()
-
-
-                    #print(ang[0])
-                    self.set_angles(ang[0])
-                    del ang[0]
-                    a-=1
-                    x=0
-                    data_s.append(self.get_requiredData())
-                    continue
-                if a == 0:
-                    a=-1
-                    self.child_conn.send("simok")
-
-                    logger.debug('S simok sent')
-                    #sys.stdout.flush()
-
-                    #sleep(0.1)
-                    data_s.append(self.get_requiredData())
-                    self.child_conn.send(data_s[1:])
-                    data_s = []
-                    while True:
-                        try:
-                            rec = self.child_conn.recv()
-                            if rec == 'dataok':
-                                break
-                            else:
-                                #child_conn.send(individual)
-                                pass
-                        except Exception as e:
-                            a=0
-                    x=0
-                try:
-                    data = self.child_conn.recv()
-                except:
-                    continue
+                self.set_angles(ang[0])
+                self.gaitAngles[1] = ang[0]
+                logger.debug('angles set')
+                del ang[0]
+                gaitsLeft-=1
+                #moveTimer=0
+                data_s.append(self.get_requiredData())
+                continue
+            if gaitsLeft == 0:
+                gaitsLeft=-1
+                self.parent_conn.send("simok")
+                logger.debug('S simok sent')
+                data_s.append(self.get_requiredData())
+                self.gaitAngles = [[0]*len(self.joints),[0]*len(self.joints)]
+                self.parent_conn.send(data_s[1:])#first [0] data is when standing still after reset
+                logger.debug('simok data sent: size %s, %s', len(data_s[1:]), str(data_s[1:]))
+                data_s = []
+                while True:
+                    if self.parent_conn.poll():
+                        rec = self.parent_conn.recv()
+                        if rec == 'dataok':
+                            logger.debug('dataok')
+                            break
+                    #else:
+                        #logger.debug('waiting for dataok')
+                #moveTimer=0
+            if self.parent_conn.poll():
+                data = self.parent_conn.recv()
                 if len(data) == self.gait_steps:
-
                     logger.debug('S gait')
-                    #sys.stdout.flush()
-
                     ang = data
-                    a=self.gait_steps
-                        #sleep(0.5)
-                    #self.child_conn.send("simok")
-                    #break
-                    x=0
+                    gaitsLeft=self.gait_steps#reset
+                    #moveTimer=0
                 elif data == 'reset':
+                    #sleep(20)####################################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     self.reset()
-                    self.child_conn.send("resok")
-
+                    self.parent_conn.send("resok")
                     logger.debug('S resetok sent')
-                    #sys.stdout.flush()
-
-                    x=550
-                    #print("next step")
-                    #sys.stdout.flush()
-                    #break
+                    #moveTimer=550
                 else:
-                    #self.child_conn.send("wrongdata")
-                    x=0
-                #sleep(0.1)
-            x+=1
-            sleep(0.001)
+                    #moveTimer=0
+                    logger.debug('idle')
+            else:
+                logger.debug('waiting for data or "reset"')
+            #moveTimer+=1
+            sleep(SIMSLEEPTIME)
